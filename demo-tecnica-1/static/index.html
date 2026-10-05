@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Oficina Multiagente · CrewAI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+<style>
+:root{
+  --bg:#f4efe6; --panel:#fffdf8; --ink:#2b2622; --muted:#7a6f64; --line:#e4dacb;
+  --wall:#e9e1d3; --floor-a:#d9bf97; --floor-b:#d1b58b;
+  --inv:#3f7be0; --rev:#e0913f; --qa:#2fa37a; --user:#8a5cd6; --err:#d64545;
+  --skin:#f2c9a0; --desk:#8a5a3b; --desk-top:#a06c48;
+  font-family:"Nunito",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);padding:0 16px 40px}
+.wrap{max-width:1280px;margin:0 auto}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:18px 0 10px}
+header h1{font-size:1.4rem;margin:0;font-weight:800;letter-spacing:-.01em}
+header h1 span{color:var(--muted);font-weight:600}
+.badge{font:600 .72rem "JetBrains Mono",monospace;padding:4px 8px;border-radius:999px;background:#fff;border:1px solid var(--line);color:var(--muted)}
+.badge.demo{background:#fff4d6;border-color:#f0d58c;color:#8a6a10}
+.spacer{flex:1}
+
+/* ---------- Formulario ---------- */
+.task{display:flex;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px;box-shadow:0 2px 0 var(--line)}
+.task textarea{flex:1;border:0;resize:vertical;min-height:52px;font:inherit;font-size:1rem;background:transparent;outline:none;color:var(--ink)}
+button{font:inherit;font-weight:800;border:0;border-radius:10px;padding:10px 16px;cursor:pointer;background:var(--ink);color:#fff;transition:transform .1s}
+button:hover{transform:translateY(-1px)}
+button:disabled{opacity:.45;cursor:not-allowed;transform:none}
+button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+
+/* ---------- Tablero de fases ---------- */
+.phases{display:flex;gap:6px;margin:14px 0 10px;flex-wrap:wrap}
+.phase{flex:1;min-width:110px;padding:8px 10px;border-radius:10px;background:var(--panel);border:1px solid var(--line);font-size:.8rem;color:var(--muted);font-weight:600;display:flex;gap:8px;align-items:center}
+.phase i{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:.7rem;background:var(--line);color:var(--muted)}
+.phase.active{border-color:var(--ink);color:var(--ink)}
+.phase.active i{background:var(--ink);color:#fff;animation:pulse 1.2s infinite}
+.phase.done i{background:var(--qa);color:#fff}
+.phase.done{color:var(--ink)}
+
+main{display:grid;grid-template-columns:minmax(0,2.1fr) minmax(280px,1fr);gap:14px}
+@media (max-width:900px){main{grid-template-columns:1fr}}
+
+/* ---------- Oficina ---------- */
+.office{position:relative;aspect-ratio:16/10.5;border-radius:16px;overflow:hidden;border:1px solid var(--line);
+  container-type:inline-size;
+  background:repeating-linear-gradient(90deg,var(--floor-a) 0 6.2%,var(--floor-b) 6.2% 6.4%,var(--floor-a) 6.4% 12.5%);}
+.wall{position:absolute;inset:0 0 auto 0;height:24%;background:var(--wall);border-bottom:1.2cqw solid #cdbfa8}
+.window{position:absolute;top:12%;left:4%;width:16%;height:66%;border:.8cqw solid #fff;border-radius:.6cqw;background:linear-gradient(#9fd3f5,#d7eefc);overflow:hidden}
+.window::before{content:"";position:absolute;width:40%;height:22%;background:#fff;border-radius:99px;top:25%;left:-40%;animation:cloud 18s linear infinite;opacity:.9}
+.window::after{content:"";position:absolute;left:50%;top:0;bottom:0;width:.5cqw;background:#fff}
+.clock{position:absolute;top:18%;right:5%;width:6.5cqw;height:6.5cqw;border-radius:50%;background:#fff;border:.6cqw solid var(--ink)}
+.clock b{position:absolute;left:50%;top:50%;width:.35cqw;background:var(--ink);transform-origin:50% 0;border-radius:2px}
+.clock .h{height:1.6cqw;animation:spin 60s linear infinite}
+.clock .m{height:2.4cqw;animation:spin 5s linear infinite}
+.logo{position:absolute;top:28%;left:50%;transform:translateX(-50%);font:800 2.2cqw "Nunito";color:#b5a58c;letter-spacing:.3em;text-transform:uppercase;white-space:nowrap}
+.plant{position:absolute;bottom:3%;width:5cqw;height:5cqw}
+.plant::before{content:"";position:absolute;bottom:0;left:20%;width:60%;height:45%;background:#b86b4b;border-radius:0 0 .8cqw .8cqw}
+.plant::after{content:"";position:absolute;bottom:40%;left:0;width:100%;height:75%;background:radial-gradient(circle at 30% 60%,#4f9a5a 30%,transparent 31%),radial-gradient(circle at 70% 55%,#3f8a4c 32%,transparent 33%),radial-gradient(circle at 50% 30%,#5aab66 30%,transparent 31%)}
+
+/* Cubículo */
+.cube{position:absolute;top:27%;width:29%;height:50%;--c:var(--ink)}
+.cube .rug{position:absolute;inset:auto 4% 0 4%;height:55%;border-radius:1.2cqw;background:color-mix(in srgb,var(--c) 18%,transparent);border:.25cqw dashed color-mix(in srgb,var(--c) 45%,transparent)}
+.person{position:absolute;left:50%;bottom:36%;width:9cqw;height:13cqw;transform:translateX(-50%)}
+.head{position:absolute;left:50%;top:0;width:5.4cqw;height:5.4cqw;margin-left:-2.7cqw;border-radius:50%;background:var(--skin);z-index:2}
+.hair{position:absolute;inset:-.3cqw -.2cqw auto -.2cqw;height:2.6cqw;border-radius:3cqw 3cqw .8cqw .8cqw;background:var(--hair,#3b2a20)}
+.eyes{position:absolute;top:2.7cqw;left:1.4cqw;right:1.4cqw;height:.7cqw;display:flex;justify-content:space-between}
+.eyes::before,.eyes::after{content:"";width:.7cqw;height:.7cqw;border-radius:50%;background:var(--ink);animation:blink 4.5s infinite}
+.mouth{position:absolute;bottom:.9cqw;left:50%;width:1.4cqw;height:.6cqw;margin-left:-.7cqw;border-bottom:.3cqw solid #8a4b3a;border-radius:0 0 1cqw 1cqw}
+.glasses .eyes::before,.glasses .eyes::after{outline:.25cqw solid var(--ink);outline-offset:.25cqw}
+.torso{position:absolute;left:50%;top:5cqw;width:8cqw;height:7cqw;margin-left:-4cqw;border-radius:3cqw 3cqw .6cqw .6cqw;background:var(--c)}
+.arm{position:absolute;top:8.5cqw;width:2cqw;height:3.4cqw;border-radius:1cqw;background:var(--c);filter:brightness(.88);z-index:3}
+.arm.l{left:-.2cqw}.arm.r{right:-.2cqw}
+.arm::after{content:"";position:absolute;bottom:-.6cqw;left:.2cqw;width:1.6cqw;height:1.6cqw;border-radius:50%;background:var(--skin)}
+.desk{position:absolute;left:8%;right:8%;bottom:14%;height:24%;background:var(--desk);border-radius:.6cqw;box-shadow:0 1cqw 0 rgba(0,0,0,.12);z-index:4}
+.desk::before{content:"";position:absolute;inset:0 0 auto 0;height:26%;background:var(--desk-top);border-radius:.6cqw .6cqw 0 0}
+.laptop{position:absolute;left:50%;bottom:74%;width:10cqw;height:6cqw;margin-left:-5cqw;background:#2d3238;border-radius:.6cqw .6cqw 0 0;z-index:5;display:grid;place-items:center}
+.laptop::before{content:"";width:1.6cqw;height:1.6cqw;border-radius:50%;background:#55606b;transition:.3s}
+.mug{position:absolute;bottom:74%;right:9%;width:2cqw;height:2.2cqw;background:#fff;border-radius:0 0 .5cqw .5cqw;z-index:5}
+.mug::after{content:"";position:absolute;right:-.8cqw;top:.4cqw;width:.8cqw;height:1cqw;border:.3cqw solid #fff;border-left:0;border-radius:0 .6cqw .6cqw 0}
+.name{position:absolute;left:50%;bottom:0;transform:translateX(-50%);white-space:nowrap;background:var(--panel);border:.2cqw solid var(--c);border-radius:99px;padding:.4cqw 1.2cqw;font:800 1.35cqw "Nunito";display:flex;gap:.6cqw;align-items:center;z-index:6}
+.led{width:.9cqw;height:.9cqw;border-radius:50%;background:#bbb}
+.status{font:600 1.05cqw "JetBrains Mono",monospace;color:var(--muted)}
+
+/* Bocadillo */
+.bubble{position:absolute;left:50%;bottom:78%;transform:translate(-50%,6px) scale(.9);width:118%;max-height:8.4cqw;overflow:hidden;background:#fff;border-radius:1cqw;padding:.8cqw 1.1cqw;font-size:1.15cqw;line-height:1.3;box-shadow:0 .4cqw 0 rgba(0,0,0,.08);border:.2cqw solid var(--c);opacity:0;transition:.3s;z-index:8;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical}
+.bubble::after{content:"";position:absolute;left:50%;bottom:-1cqw;margin-left:-1cqw;border:1cqw solid transparent;border-top-color:#fff;border-bottom:0}
+.bubble.show{opacity:1;transform:translate(-50%,0) scale(1)}
+
+/* Decoración por agente */
+.shelf{position:absolute;left:2%;top:4%;width:22%;height:40%;background:#7a4e33;border-radius:.4cqw;padding:.5cqw;display:flex;flex-direction:column;justify-content:space-around}
+.shelf div{height:26%;display:flex;gap:.25cqw;align-items:flex-end;border-bottom:.35cqw solid #5d3a25}
+.shelf span{flex:1;background:var(--b);height:var(--h)}
+.board{position:absolute;right:1%;top:0;width:30%;height:46%;background:#fff;border:.45cqw solid #9aa3ad;border-radius:.4cqw;padding:.4cqw;display:grid;grid-template-columns:1fr 1fr;gap:.35cqw;align-content:start}
+.sticky{background:#ffe27a;font:700 .85cqw "Nunito";padding:.3cqw;border-radius:.2cqw;transform:rotate(var(--r,-2deg)) scale(0);transition:transform .4s cubic-bezier(.3,1.6,.6,1);line-height:1.1;overflow:hidden;max-height:3.2cqw}
+.sticky.in{transform:rotate(var(--r,-2deg)) scale(1)}
+.sticky.chosen{background:#9be3c1;outline:.2cqw solid var(--qa)}
+.printer{position:absolute;right:3%;top:6%;width:22%;height:22%;background:#cfd5db;border-radius:.6cqw;border-bottom:.8cqw solid #9aa3ad}
+.printer::before{content:"";position:absolute;left:15%;right:15%;top:-40%;height:50%;background:#fff;border-radius:.2cqw;transform:translateY(60%);transition:.6s}
+.stamp{position:absolute;left:4%;top:8%;font:800 1.5cqw "Nunito";color:var(--qa);border:.3cqw solid var(--qa);border-radius:.5cqw;padding:.2cqw .8cqw;transform:rotate(-12deg) scale(2.2);opacity:0;transition:.35s cubic-bezier(.3,1.6,.6,1);background:rgba(255,255,255,.7)}
+
+/* Estados */
+.cube[data-state=working] .led{background:var(--c);box-shadow:0 0 0 .4cqw color-mix(in srgb,var(--c) 30%,transparent);animation:pulse 1s infinite}
+.cube[data-state=working] .arm.l{animation:type .28s infinite alternate}
+.cube[data-state=working] .arm.r{animation:type .28s .14s infinite alternate}
+.cube[data-state=working] .head{animation:nod 2.2s ease-in-out infinite}
+.cube[data-state=working] .laptop::before{background:#9fe0ff;box-shadow:0 0 2cqw #9fe0ff}
+.cube[data-state=waiting] .led{background:#f2b705;animation:pulse .7s infinite}
+.cube[data-state=waiting] .person{animation:wave 1.4s ease-in-out infinite}
+.cube[data-state=done] .led{background:var(--qa)}
+.cube[data-state=idle] .head{animation:sleepy 4s ease-in-out infinite}
+.cube[data-state=idle] .person::after{content:"z z";position:absolute;right:-2cqw;top:-1cqw;font:800 1.4cqw "Nunito";color:var(--muted);animation:zz 2.5s infinite}
+.cube[data-state=error] .led{background:var(--err)}
+#c-qa.stamped .stamp{opacity:1;transform:rotate(-12deg) scale(1)}
+#c-qa[data-state=working] .printer::before{transform:translateY(0)}
+
+/* Mesa del usuario */
+.userdesk{position:absolute;left:50%;bottom:2%;transform:translateX(-50%);width:24%;height:17%;background:var(--panel);border:.3cqw solid var(--user);border-radius:1.2cqw;display:flex;align-items:center;justify-content:center;gap:1cqw;font:800 1.4cqw "Nunito";z-index:6}
+.tray{width:5cqw;height:3cqw;border:.35cqw solid var(--user);border-top:0;border-radius:0 0 .6cqw .6cqw;position:relative}
+.tray.full::before{content:"";position:absolute;left:10%;right:10%;bottom:.4cqw;height:1.8cqw;background:#fff;border:.15cqw solid var(--line);box-shadow:0 -.4cqw 0 #fff,0 -.4cqw 0 .15cqw var(--line)}
+.bell{display:none;padding:.5cqw 1cqw;border-radius:99px;background:var(--user);color:#fff;font-size:1.2cqw;animation:ring .5s infinite alternate;cursor:pointer;border:0}
+.userdesk.ask .bell{display:inline-block}
+
+/* Papel volador */
+.paper{position:absolute;width:3.2cqw;height:4cqw;background:#fff;border-radius:.3cqw;box-shadow:0 .4cqw 1cqw rgba(0,0,0,.2);z-index:20;pointer-events:none;
+  background-image:repeating-linear-gradient(#fff 0 .6cqw,#d6dde5 .6cqw .75cqw);background-clip:content-box;padding:.6cqw .5cqw;border:.15cqw solid #eee}
+
+/* ---------- Panel lateral ---------- */
+.side{display:flex;flex-direction:column;gap:14px;min-width:0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.card h2{font-size:.85rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 8px}
+.log{height:min(58vh,520px);overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding-right:4px}
+.msg{display:grid;grid-template-columns:28px 1fr;gap:8px;font-size:.86rem;line-height:1.35;animation:fadein .3s}
+.av{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:800;font-size:.72rem}
+.msg b{font-size:.78rem}
+.msg small{color:var(--muted);font:.7rem "JetBrains Mono",monospace;margin-left:4px}
+.msg .txt{word-break:break-word;color:#4a423b}
+.msg.tool .txt{font-family:"JetBrains Mono",monospace;font-size:.76rem;background:#f3eee5;padding:4px 6px;border-radius:6px}
+.msg.done .txt{color:var(--qa);font-weight:600}
+.msg.error .txt{color:var(--err);font-weight:600}
+.empty{color:var(--muted);font-size:.88rem}
+
+/* ---------- Informe ---------- */
+#report{margin-top:14px}
+.md{line-height:1.6;font-size:.98rem;max-width:80ch}
+.md h1{font-size:1.5rem}.md h2{font-size:1.15rem;border-bottom:1px solid var(--line);padding-bottom:4px;margin-top:1.4em}
+.md pre{overflow-x:auto;background:#f3eee5;padding:10px;border-radius:8px}
+.md table{border-collapse:collapse;display:block;overflow-x:auto}.md td,.md th{border:1px solid var(--line);padding:4px 8px}
+.report-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+
+/* ---------- Modal de decisión ---------- */
+dialog{border:0;border-radius:18px;padding:0;max-width:min(920px,calc(100vw - 32px));width:100%;background:var(--panel);color:var(--ink);box-shadow:0 20px 60px rgba(0,0,0,.3)}
+dialog::backdrop{background:rgba(43,38,34,.45);backdrop-filter:blur(2px)}
+.dlg{padding:20px}
+.dlg-head{display:flex;gap:12px;align-items:flex-start}
+.dlg-head .av{width:40px;height:40px;font-size:.9rem;flex:none}
+.dlg h3{margin:0 0 4px;font-size:1.15rem}
+.dlg .sum{color:var(--muted);font-size:.9rem;margin:0}
+.opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin:16px 0}
+.opt{text-align:left;background:#fff;color:var(--ink);border:2px solid var(--line);border-radius:12px;padding:12px;font-weight:400;display:flex;flex-direction:column;gap:6px}
+.opt:hover{border-color:var(--rev)}
+.opt.sel{border-color:var(--rev);background:#fff6ec;box-shadow:0 0 0 3px #f7dcbd}
+.opt strong{font-size:1rem}
+.opt em{font-size:.85rem;color:var(--rev);font-style:normal;font-weight:700}
+.opt p{margin:0;font-size:.86rem;color:#4a423b}
+.opt ul{margin:0;padding-left:16px;font-size:.8rem}
+.opt .pro{color:var(--qa)}.opt .con{color:var(--err)}
+.dlg textarea{width:100%;min-height:60px;border:1px solid var(--line);border-radius:10px;padding:8px;font:inherit;resize:vertical;background:#fff}
+.dlg-foot{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
+
+@keyframes pulse{50%{opacity:.45}}
+@keyframes type{to{transform:translateY(-.6cqw)}}
+@keyframes nod{50%{transform:translateY(.25cqw) rotate(2deg)}}
+@keyframes sleepy{50%{transform:translateY(.4cqw) rotate(-6deg)}}
+@keyframes wave{25%{transform:translateX(-50%) rotate(-3deg)}75%{transform:translateX(-50%) rotate(3deg)}}
+@keyframes zz{0%{opacity:0;transform:translateY(0)}50%{opacity:1}100%{opacity:0;transform:translateY(-2cqw)}}
+@keyframes blink{0%,94%,100%{transform:scaleY(1)}97%{transform:scaleY(.1)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes cloud{to{left:110%}}
+@keyframes ring{to{transform:rotate(6deg)}}
+@keyframes fadein{from{opacity:0;transform:translateY(4px)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Oficina Multiagente <span>· CrewAI</span></h1>
+    <div class="spacer"></div>
+    <span class="badge" id="model">…</span>
+    <span class="badge demo" id="demo" hidden>MODO DEMO</span>
+  </header>
+
+  <form class="task" id="form">
+    <textarea id="tarea" placeholder="Escribe la tarea a investigar… p. ej. «Impacto de la IA generativa en la educación secundaria en España»" required></textarea>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <button type="submit" id="go">Enviar a la oficina</button>
+      <button type="button" class="ghost" id="reset" hidden>Nueva tarea</button>
+    </div>
+  </form>
+
+  <div class="phases" id="phases">
+    <div class="phase" data-p="investigando"><i>1</i>Investigación</div>
+    <div class="phase" data-p="revisando"><i>2</i>Revisión</div>
+    <div class="phase" data-p="esperando_usuario"><i>3</i>Tu decisión</div>
+    <div class="phase" data-p="qa"><i>4</i>QA</div>
+    <div class="phase" data-p="informe"><i>5</i>Informe</div>
+  </div>
+
+  <main>
+    <section class="office" id="office" aria-label="Oficina virtual de agentes">
+      <div class="wall">
+        <div class="window"></div>
+        <div class="logo">Crew&nbsp;Office</div>
+        <div class="clock"><b class="h"></b><b class="m"></b></div>
+      </div>
+      <div class="plant" style="left:1.5%"></div>
+      <div class="plant" style="right:1.5%"></div>
+
+      <div class="cube" id="c-investigador" data-state="idle" style="--c:var(--inv);left:3%">
+        <div class="rug"></div>
+        <div class="shelf">
+          <div><span style="--b:#e06666;--h:90%"></span><span style="--b:#6fa8dc;--h:75%"></span><span style="--b:#ffd966;--h:95%"></span><span style="--b:#93c47d;--h:70%"></span></div>
+          <div><span style="--b:#8e7cc3;--h:85%"></span><span style="--b:#f6b26b;--h:95%"></span><span style="--b:#6fa8dc;--h:70%"></span></div>
+          <div><span style="--b:#93c47d;--h:80%"></span><span style="--b:#e06666;--h:90%"></span><span style="--b:#ffd966;--h:75%"></span><span style="--b:#8e7cc3;--h:95%"></span></div>
+        </div>
+        <div class="bubble"></div>
+        <div class="person glasses" style="--hair:#2d2320"><div class="head"><div class="hair"></div><div class="eyes"></div><div class="mouth"></div></div><div class="torso"></div><div class="arm l"></div><div class="arm r"></div></div>
+        <div class="desk"><div class="laptop"></div><div class="mug"></div></div>
+        <div class="name"><span class="led"></span>Investigador <span class="status">zzz</span></div>
+      </div>
+
+      <div class="cube" id="c-revisor" data-state="idle" style="--c:var(--rev);left:35.5%">
+        <div class="rug"></div>
+        <div class="board" id="board"></div>
+        <div class="bubble"></div>
+        <div class="person" style="--hair:#c0662b"><div class="head"><div class="hair"></div><div class="eyes"></div><div class="mouth"></div></div><div class="torso"></div><div class="arm l"></div><div class="arm r"></div></div>
+        <div class="desk"><div class="laptop"></div><div class="mug"></div></div>
+        <div class="name"><span class="led"></span>Revisión <span class="status">zzz</span></div>
+      </div>
+
+      <div class="cube" id="c-qa" data-state="idle" style="--c:var(--qa);left:68%">
+        <div class="rug"></div>
+        <div class="printer"></div>
+        <div class="stamp">OK ✓ QA</div>
+        <div class="bubble"></div>
+        <div class="person glasses" style="--hair:#e8d9b8"><div class="head"><div class="hair"></div><div class="eyes"></div><div class="mouth"></div></div><div class="torso"></div><div class="arm l"></div><div class="arm r"></div></div>
+        <div class="desk"><div class="laptop"></div><div class="mug"></div></div>
+        <div class="name"><span class="led"></span>QA <span class="status">zzz</span></div>
+      </div>
+
+      <div class="userdesk" id="userdesk">
+        <div class="tray" id="tray"></div>Tu mesa
+        <button class="bell" id="bell" type="button">¡Decide!</button>
+      </div>
+    </section>
+
+    <aside class="side">
+      <div class="card">
+        <h2>Canal de la oficina</h2>
+        <div class="log" id="log"><p class="empty">Escribe una tarea para que el equipo empiece a trabajar.</p></div>
+      </div>
+    </aside>
+  </main>
+
+  <section class="card" id="report" hidden>
+    <div class="report-actions">
+      <h2 style="flex:1;margin:0;align-self:center">Informe final</h2>
+      <button type="button" class="ghost" id="copy">Copiar Markdown</button>
+      <button type="button" class="ghost" id="download">Descargar .md</button>
+    </div>
+    <article class="md" id="md"></article>
+  </section>
+</div>
+
+<dialog id="dlg">
+  <form class="dlg" method="dialog" id="dlgform">
+    <div class="dlg-head">
+      <div class="av" style="background:var(--rev)">RV</div>
+      <div>
+        <h3 id="dlg-q">¿Qué interpretación seguimos?</h3>
+        <p class="sum" id="dlg-sum"></p>
+      </div>
+    </div>
+    <div class="opts" id="opts"></div>
+    <label for="coment" style="font-weight:700;font-size:.9rem">Comentario para QA (opcional)</label>
+    <textarea id="coment" placeholder="Matices, público objetivo, extensión…"></textarea>
+    <p id="dlg-err" hidden style="color:var(--err);font-weight:700;font-size:.9rem;margin:10px 0 0"></p>
+    <div class="dlg-foot">
+      <button type="button" class="ghost" id="later">Más tarde</button>
+      <button type="submit" id="confirm" disabled>Confirmar y enviar a QA</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+const $ = s => document.querySelector(s);
+const AG = {
+  investigador:{n:"Investigador",c:"var(--inv)",i:"IN"},
+  revisor:{n:"Revisión",c:"var(--rev)",i:"RV"},
+  qa:{n:"QA",c:"var(--qa)",i:"QA"},
+  usuario:{n:"Tú",c:"var(--user)",i:"TÚ"},
+  sistema:{n:"Sistema",c:"var(--err)",i:"!"},
+};
+const ORDER = ["investigando","revisando","esperando_usuario","qa","informe","terminado"];
+let job=null, since=0, fase=null, revision=null, sel=null, timer=null, informe="", flown=new Set();
+
+fetch("/api/config").then(r=>r.json()).then(c=>{ $("#model").textContent=c.model; $("#demo").hidden=!c.demo; });
+
+/* ---------- Envío ---------- */
+$("#form").addEventListener("submit", async e=>{
+  e.preventDefault();
+  const tarea=$("#tarea").value.trim(); if(!tarea) return;
+  resetOffice(); $("#go").disabled=true; $("#tarea").disabled=true;
+  const r=await fetch("/api/jobs",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tarea})});
+  if(!r.ok){ alertLog("No se pudo crear la tarea"); $("#go").disabled=false; $("#tarea").disabled=false; return; }
+  job=(await r.json()).id; poll();
+});
+$("#tarea").addEventListener("keydown",e=>{ if(e.key==="Enter"&&(e.ctrlKey||e.metaKey)) $("#form").requestSubmit(); });
+$("#reset").addEventListener("click",()=>{ resetOffice(); $("#tarea").value=""; $("#tarea").disabled=false; $("#go").disabled=false; $("#tarea").focus(); });
+
+function resetOffice(){
+  clearTimeout(timer); job=null; since=0; fase=null; revision=null; sel=null; informe=""; flown=new Set();
+  $("#log").innerHTML=""; $("#board").innerHTML=""; $("#report").hidden=true; $("#reset").hidden=true;
+  $("#tray").classList.remove("full"); $("#userdesk").classList.remove("ask"); $("#c-qa").classList.remove("stamped");
+  document.querySelectorAll(".bubble").forEach(b=>b.classList.remove("show"));
+  setStates("idle","idle","idle"); paintPhases(null);
+}
+
+/* ---------- Polling ---------- */
+async function poll(){
+  if(!job) return;
+  try{
+    const r=await fetch(`/api/jobs/${job}?since=${since}`); const s=await r.json();
+    s.eventos.forEach(addEvent); since=s.total;
+    if(s.revision && !revision){ revision=s.revision; fillBoard(); }
+    if(s.fase!==fase){ onPhase(s.fase, s); fase=s.fase; }
+    if(s.fase==="terminado"||s.fase==="error") return;
+  }catch(e){ /* reintento en el siguiente tick */ }
+  timer=setTimeout(poll,800);
+}
+
+function onPhase(f, s){
+  paintPhases(f);
+  const at = p => ORDER.indexOf(f) >= ORDER.indexOf(p);
+  if(f==="investigando") setStates("working","idle","idle");
+  if(f==="revisando") setStates("done","working","idle");
+  if(f==="esperando_usuario") setStates("done","waiting","idle");
+  if(f==="qa"||f==="informe") setStates("done","done","working");
+  if(f==="terminado") setStates("done","done","done");
+  if(f==="error"){ ["investigador","revisor","qa"].forEach(a=>{ const c=$("#c-"+a); if(c.dataset.state==="working") c.dataset.state="error"; }); finish(); }
+
+  if(at("revisando")) fly("inv-rev","#c-investigador","#c-revisor");
+  if(at("esperando_usuario")) fly("rev-user","#c-revisor","#userdesk",()=>{
+    if(f!=="esperando_usuario") return;
+    $("#tray").classList.add("full"); $("#userdesk").classList.add("ask"); openDialog();
+  });
+  if(at("qa")) fly("user-qa","#userdesk","#c-qa");
+  if(f==="terminado"){
+    $("#c-qa").classList.add("stamped");
+    fly("qa-user","#c-qa","#userdesk",()=>{ $("#tray").classList.add("full"); showReport(s.informe); });
+    finish();
+  }
+}
+function finish(){ $("#reset").hidden=false; }
+
+function setStates(a,b,c){
+  [["investigador",a],["revisor",b],["qa",c]].forEach(([k,st])=>{
+    const el=$("#c-"+k); el.dataset.state=st;
+    el.querySelector(".status").textContent={idle:"zzz",working:"trabajando…",waiting:"esperándote",done:"hecho ✓",error:"error"}[st];
+    if(st==="idle"||st==="done") el.querySelector(".bubble").classList.remove("show");
+  });
+}
+function paintPhases(f){
+  const i = f==="terminado" ? 99 : ORDER.indexOf(f);
+  document.querySelectorAll(".phase").forEach((el,k)=>{
+    el.classList.toggle("done", i>k); el.classList.toggle("active", i===k);
+  });
+}
+
+/* ---------- Eventos ---------- */
+function addEvent(ev){
+  const log=$("#log"); log.querySelector(".empty")?.remove();
+  const a=AG[ev.agente]||AG.sistema;
+  const d=document.createElement("div"); d.className="msg "+ev.tipo;
+  const hora=new Date(ev.t*1000).toLocaleTimeString("es-ES",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
+  d.innerHTML=`<div class="av" style="background:${a.c}">${a.i}</div><div><b></b><small>${hora}</small><div class="txt"></div></div>`;
+  d.querySelector("b").textContent=a.n; d.querySelector(".txt").textContent=ev.texto;
+  log.appendChild(d); log.scrollTop=log.scrollHeight;
+  const cube=$("#c-"+ev.agente);
+  if(cube && ev.tipo!=="report"){ const b=cube.querySelector(".bubble"); b.textContent=ev.texto; b.classList.add("show"); }
+}
+function alertLog(t){ addEvent({agente:"sistema",tipo:"error",texto:t,t:Date.now()/1000}); }
+
+/* ---------- Pizarra del revisor ---------- */
+function fillBoard(){
+  const board=$("#board"); board.innerHTML="";
+  revision.opciones.forEach((o,i)=>{
+    const s=document.createElement("div"); s.className="sticky"; s.textContent=o.titulo;
+    s.style.setProperty("--r",(i%2?3:-3)+"deg"); board.appendChild(s);
+    setTimeout(()=>s.classList.add("in"),250*i+100);
+  });
+}
+
+/* ---------- Papel volando entre mesas ---------- */
+function center(sel){
+  const o=$("#office").getBoundingClientRect(), r=$(sel).querySelector(".desk, .tray")?.getBoundingClientRect()||$(sel).getBoundingClientRect();
+  return {x:r.left-o.left+r.width/2, y:r.top-o.top+r.height/3};
+}
+function fly(key, from, to, done){
+  if(flown.has(key)) return; flown.add(key);
+  const p=document.createElement("div"); p.className="paper"; $("#office").appendChild(p);
+  const a=center(from), b=center(to), w=p.offsetWidth/2, h=p.offsetHeight/2;
+  const mid={x:(a.x+b.x)/2, y:Math.min(a.y,b.y)-$("#office").offsetHeight*.18};
+  p.animate([
+    {transform:`translate(${a.x-w}px,${a.y-h}px) rotate(0deg) scale(.6)`},
+    {transform:`translate(${mid.x-w}px,${mid.y-h}px) rotate(200deg) scale(1.15)`},
+    {transform:`translate(${b.x-w}px,${b.y-h}px) rotate(360deg) scale(.7)`}
+  ],{duration:1300,easing:"cubic-bezier(.45,.05,.4,1)",fill:"forwards"}).onfinish=()=>{ p.remove(); done&&done(); };
+}
+
+/* ---------- Diálogo de decisión ---------- */
+function openDialog(){
+  if(!revision) return;
+  $("#dlg-q").textContent=revision.pregunta_al_usuario||"¿Qué interpretación seguimos?";
+  $("#dlg-sum").textContent=revision.resumen_investigacion||"";
+  const box=$("#opts"); box.innerHTML="";
+  revision.opciones.forEach((o,i)=>{
+    const b=document.createElement("button"); b.type="button"; b.className="opt"+(sel===i?" sel":"");
+    const li=(arr,cls,pre)=>arr?.length?`<ul>${arr.map(x=>`<li class="${cls}">${pre} ${esc(x)}</li>`).join("")}</ul>`:"";
+    b.innerHTML=`<strong>${esc(o.titulo)}</strong><em>${esc(o.enfoque)}</em><p>${esc(o.descripcion)}</p>${li(o.pros,"pro","+")}${li(o.contras,"con","–")}`;
+    b.onclick=()=>{ sel=i; box.querySelectorAll(".opt").forEach((x,k)=>x.classList.toggle("sel",k===i)); $("#confirm").disabled=false; };
+    box.appendChild(b);
+  });
+  $("#confirm").disabled=sel===null;
+  if(!$("#dlg").open) $("#dlg").showModal();
+}
+$("#bell").addEventListener("click",openDialog);
+$("#later").addEventListener("click",()=>$("#dlg").close());
+$("#dlgform").addEventListener("submit",async e=>{
+  e.preventDefault(); if(sel===null) return;
+  $("#confirm").disabled=true; $("#dlg-err").hidden=true;
+  let r, msg="";
+  try{
+    r=await fetch(`/api/jobs/${job}/decision`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({opcion:sel,comentario:$("#coment").value.trim()})});
+    if(!r.ok) msg=(await r.json().catch(()=>({}))).detail||`Error ${r.status}`;
+  }catch(err){ msg="No hay conexión con el servidor. ¿Sigue arrancado uvicorn?"; }
+  if(msg){
+    if(r?.status===404) msg+=". El servidor se ha reiniciado y ha perdido la tarea: pulsa «Nueva tarea» y vuelve a enviarla.";
+    $("#dlg-err").textContent=msg; $("#dlg-err").hidden=false;
+    $("#confirm").disabled=false; alertLog("No se pudo enviar la decisión: "+msg);
+    if(r?.status===404||r?.status===409) finish();
+    return;
+  }
+  $("#dlg").close(); $("#coment").value="";
+  $("#userdesk").classList.remove("ask"); $("#tray").classList.remove("full");
+  document.querySelectorAll(".sticky").forEach((s,k)=>s.classList.toggle("chosen",k===sel));
+});
+
+/* ---------- Informe ---------- */
+function showReport(md){
+  informe=md||"";
+  const html = window.marked ? marked.parse(informe) : `<pre>${esc(informe)}</pre>`;
+  $("#md").innerHTML = window.DOMPurify ? DOMPurify.sanitize(html) : (window.marked ? `<pre>${esc(informe)}</pre>` : html);
+  $("#report").hidden=false; $("#report").scrollIntoView({behavior:"smooth",block:"start"});
+}
+$("#copy").addEventListener("click",async()=>{ try{ await navigator.clipboard.writeText(informe); $("#copy").textContent="¡Copiado!"; setTimeout(()=>$("#copy").textContent="Copiar Markdown",1500);}catch{} });
+$("#download").addEventListener("click",()=>{
+  const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([informe],{type:"text/markdown"}));
+  a.download="informe.md"; a.click(); URL.revokeObjectURL(a.href);
+});
+
+function esc(s){ return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+</script>
+</body>
+</html>
