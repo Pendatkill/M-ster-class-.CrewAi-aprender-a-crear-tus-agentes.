@@ -10,7 +10,7 @@ Material de la Máster class CrewAI.
 | `CrewAI_demo.html` | Demo interactiva (abrir en el navegador) |
 | `Manual_del_alumno.pdf` | Manual del alumno |
 | [`demo-tecnica-1/`](demo-tecnica-1/) | **Demo técnica 1**: oficina multiagente con CrewAI (código ejecutable) |
-| [`demo3/`](demo3/) | **Demo 3**: la oficina con un 4.º agente (Maquetador) que usa una *Tool* para generar el informe en PDF, y robots animados |
+| [`demo3/`](demo3/) | **Demo 3**: la oficina con un 4.º agente (Maquetador) que usa una *Tool* para generar el informe en PDF.
 
 Muchisimas gracias a todos por seguir esta formación.
 
